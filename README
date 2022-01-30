@@ -1,0 +1,7 @@
+# Prerequisites
+
+sudo apt-get install jack jack-tools libjack-dev libinstpatch-1.0 libglib2.0-dev
+
+# Build fluidsynth2
+
+https://github.com/FluidSynth/fluidsynth/wiki/BuildingWithCMake#requirements
