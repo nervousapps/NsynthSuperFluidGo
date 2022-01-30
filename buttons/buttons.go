@@ -1,11 +1,12 @@
 package buttons
 
 import (
-    "log"
+	"log"
+	"time"
 
-    "periph.io/x/conn/v3/gpio"
-    "periph.io/x/conn/v3/gpio/gpioreg"
-    "periph.io/x/host/v3"
+	"periph.io/x/conn/v3/gpio"
+	"periph.io/x/conn/v3/gpio/gpioreg"
+	"periph.io/x/host/v3"
 )
 
 type Button struct {
@@ -24,8 +25,8 @@ func NewButton(gpioPin string, handler func(chan bool)) (*Button, error) {
         log.Println("Failed to find gpiopin")
     }
 
-    // Set it as input, with an internal pull up resistor:
-    if err := p.In(gpio.PullUp, gpio.BothEdges); err != nil {
+    // Set it as input, with an internal pull up resistor: gpio.BothEdges
+    if err := p.In(gpio.PullUp, gpio.FallingEdge); err != nil {
         log.Println(err)
     }
 
@@ -41,5 +42,6 @@ func NewButton(gpioPin string, handler func(chan bool)) (*Button, error) {
 		}else {
             buttonChannel <- false
 		}
+        time.Sleep(50*time.Millisecond)
     }
 }

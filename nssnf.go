@@ -9,7 +9,8 @@ import (
 
 	"math/rand"
 
-	"github.com/coral/fluidsynth2"
+	// "github.com/coral/fluidsynth2"
+	"fluidsynth2"
 
 	"log"
 	"time"
@@ -23,6 +24,7 @@ var main_screen *screen.Screen
 var err error
 var displayChan chan bool
 var ui []screen.Msg
+var available_presets []string
 
 const audio_driver string = "jack"
 const midi_driver string = "jack"
@@ -44,6 +46,9 @@ const BUTTON1 int = 8
 const BUTTON2 int = 9
 const BUTTON3 int = 10
 const BUTTON4 int = 11
+const MENU_LINE1 int = 12
+const MENU_LINE2 int = 13
+const MENU_LINE3 int = 14
 
 
 func main() {
@@ -56,15 +61,15 @@ func main() {
 
 	initFluidSynth()
 
-	for i := 0; i<=BUTTON4 ; i++{
+	for i := 0; i<=MENU_LINE3 ; i++{
 		message := screen.Msg{}
 		message.SetMsg(0,0,"")
 		ui = append(ui, message)
 	}
 
 	forgeUi(CENTER, 10, 30, "NsynthSuperHard")
-	
 	time.Sleep(1000* time.Millisecond)
+	forgeUi(CENTER, 10, 30, "")
 
 	displayChan = make(chan bool)
 	// go main_screen.DisplayGif("images/golang.gif", displayChan)
@@ -185,13 +190,23 @@ func encodersHandler(encsChannel chan []byte) {
 			forgeUi(CENTER, 0, 30, "%d", int(encs[0]))
 		}
 		// Change program with encoder 1
-		if previous_encs[1] != encs[1] && encs[1]/2 < 126 {
-			previous_encs[1] = encs[1]
+		if previous_encs[1] != encs[1]/2 && encs[1]/2 < 126 {
 			go synth.ProgramChange(0, uint8(encs[1]/2))
 			name := synth.SFGetPresetName(0)
-			forgeUi(CENTER, 0, 30, name)
+			name_0 := ""
+			name_1 := ""
+			for index,element := range available_presets{
+				if element == name {
+					name_0 = available_presets[index-1]
+					name_1 = available_presets[index+1]
+				}
+			}
+			forgeUi(MENU_LINE1, 0, 15, name_0)
+			forgeUi(MENU_LINE2, 0, 30, "->%v", name)
+			forgeUi(MENU_LINE3, 0, 45, name_1)
 			log.Printf("Program change to ")
 			log.Println(name)
+			previous_encs[1] = encs[1]/2
 		}
 		// Change program with encoder 2
 		if previous_encs[2] != encs[2] && encs[2]/2 < 126 {
@@ -217,16 +232,31 @@ func potentiometersHandler(potsChannel chan []byte) {
 			previous_pots[0] = pots[0]
 		}
 		if previous_pots[1] != pots[1] && (previous_pots[1]+2 < pots[1] || previous_pots[1]+2 > pots[1]) {
-			forgeUi(POT2, 20, 54, "%d", int(pots[1])/2)
+			forgeUi(POT2, 20, 54, "%0.2f", float64(pots[1])/255.0)
+			if pots[1] == 0 {
+				// result := synth.EnableReverb(-1, 0)
+				go s.SetInt("synth.reverb.active", 0)
+				// forgeUi(POT2, 20, 54, "%d", result)
+			}else{
+				// result := synth.EnableReverb(-1, 1)
+				// forgeUi(POT2, 20, 54, "%d", result)
+				go s.SetInt("synth.reverb.active", 1)
+			}
+			// synth.SetReverbRoomsize(-1, float64(pots[1])/255.0)
+			go s.SetNum("synth.reverb.room-size", float64(pots[1])/255.0)
 			previous_pots[1] = pots[1]
 		}
 		if previous_pots[2] != pots[2] && (previous_pots[2]+2 < pots[2] || previous_pots[2]+2 > pots[2]) {
-			forgeUi(POT3, 40, 64, "%d", int(pots[2])/2)
+			forgeUi(POT3, 40, 64, "%0.2f", float64(pots[2])/255.0)
 			previous_pots[2] = pots[2]
+			// synth.SetReverbLevel(-1, float64(pots[2])/10.0)
+			go s.SetNum("synth.reverb.level", float64(pots[2])/255.0)
 		}
 		if previous_pots[3] != pots[3] && (previous_pots[3]+2 < pots[3] || previous_pots[3]+2 > pots[3]) {
-			forgeUi(POT4, 60, 54, "%d", int(pots[3])/2)
+			forgeUi(POT4, 60, 54, "%0.2f", float64(pots[3])/10.0)
 			previous_pots[3] = pots[3]
+			// synth.SetReverbWidth(-1, float64(pots[3])/10.0)
+			go s.SetNum("synth.reverb.width", float64(pots[3])/255.0)
 		}
 		if previous_pots[4] != pots[4] && (previous_pots[4]+2 < pots[4] || previous_pots[4]+2 > pots[4]) {
 			forgeUi(POT5, 80, 64, "%d", int(pots[4])/2)
@@ -265,6 +295,10 @@ func initFluidSynth() {
 
 	sf_id := synth.SFLoad(soundfont, true)
 	fmt.Printf("Soundfont id : %d\n", sf_id)
+	available_presets = synth.SFGetPresetsName(sf_id)
+	for _, preset_name := range available_presets {
+		fmt.Println(preset_name)
+	}
 
 	player := fluidsynth2.NewPlayer(synth)
 
@@ -296,7 +330,7 @@ func playMidi() {
 			/* Generate a random key */
 			rand.Seed(time.Now().UnixNano())
 			min := 30
-			max := 100
+			max := 60
 			// fmt.Println(rand.Intn(max - min + 1) + min)
 			note := rand.Intn(max - min + 1) + min
 			/* Play a note */
