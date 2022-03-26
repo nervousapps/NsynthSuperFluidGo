@@ -1,7 +1,7 @@
 // This code is largely inspired by periph.io ssd1306 package
 // I just add the parameter address to NewI2C in newI2CAddress
 
-            // Original code License \\
+// Original code License \\
 // Copyright 2016 The Periph Authors. All rights reserved.
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
@@ -17,6 +17,7 @@ import (
 	"image/draw"
 	"image/gif"
 	"log"
+	"math"
 	"os"
 	"time"
 
@@ -38,81 +39,83 @@ import (
 // convertAndResizeAndCenter takes an image, resizes and centers it on a
 // image.Gray of size w*h.
 func convertAndResizeAndCenter(w, h int, src image.Image) *image.Gray {
-    src = resize.Thumbnail(uint(w), uint(h), src, resize.Bicubic)
-    img := image.NewGray(image.Rect(0, 0, w, h))
-    r := src.Bounds()
-    r = r.Add(image.Point{(w - r.Max.X) / 2, (h - r.Max.Y) / 2})
-    draw.Draw(img, r, src, image.Point{}, draw.Src)
-    return img
+	src = resize.Thumbnail(uint(w), uint(h), src, resize.Bicubic)
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	r := src.Bounds()
+	r = r.Add(image.Point{(w - r.Max.X) / 2, (h - r.Max.Y) / 2})
+	draw.Draw(img, r, src, image.Point{}, draw.Src)
+	return img
 }
 
 type Screen struct {
-    dev Dev
+	dev Dev
 }
 
 func resetDisplay() {
 	// Lookup a pin by its number:
-    p := gpioreg.ByName("GPIO4")
-    if p == nil {
-        log.Fatal("Failed to find display reset pin GPIO4")
-    }
+	p := gpioreg.ByName("GPIO4")
+	if p == nil {
+		log.Fatal("Failed to find display reset pin GPIO4")
+	}
 	// Set the output to low:
-    if err := p.Out(gpio.Low); err != nil {
-        log.Fatal(err)
-    }
+	if err := p.Out(gpio.Low); err != nil {
+		log.Fatal(err)
+	}
 
-    // Wait a little bit before re-enabling the display
-    time.Sleep(100* time.Millisecond)
+	// Wait a little bit before re-enabling the display
+	time.Sleep(100 * time.Millisecond)
 
 	// Set the output to high:
-    if err := p.Out(gpio.High); err != nil {
-        log.Fatal(err)
-    }
+	if err := p.Out(gpio.High); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func NewScreen() (*Screen, error) {
-    // Load all the drivers:
-    if _, err := host.Init(); err != nil {
-        log.Fatal(err)
-    }
+	// Load all the drivers:
+	if _, err := host.Init(); err != nil {
+		log.Fatal(err)
+	}
 
 	// Reset the display
 	resetDisplay()
 
-    // Open a handle to the first available I²C bus:
-    bus, err := i2creg.Open("")
-    if err != nil {
-        log.Fatal(err)
-    }
+	// Open a handle to the first available I²C bus:
+	bus, err := i2creg.Open("")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    // Open a handle to a ssd1306 connected on the I²C bus:
-    dev, err := newI2CAddress(bus, &DefaultOpts, 0x3D)
-    if err != nil {
-        log.Fatal(err)
-    }
-    screen := &Screen{
-        dev: *dev,
-    }
+	// Open a handle to a ssd1306 connected on the I²C bus:
+	dev, err := newI2CAddress(bus, &DefaultOpts, 0x3D)
+	if err != nil {
+		log.Fatal(err)
+	}
+	screen := &Screen{
+		dev: *dev,
+	}
 
-    return screen, nil
+	return screen, nil
 }
 
 type Msg struct {
-	x, y int
-	msg string
+	x, y   int
+	invert bool
+	msg    string
 }
 
-func (msg *Msg) SetMsg(x int, y int, message string, v ...interface{}){
+func (msg *Msg) SetMsg(x int, y int, invert bool, message string, v ...interface{}) {
 	msg.msg = message
 	msg.x = x
 	msg.y = y
+	msg.invert = invert
 }
 
 func (screen *Screen) DisplayMessage(messages []Msg) {
-    // Draw on it.
-    // log.Printf("Displaying message %v", msg)
+	// Draw on it.
+	// log.Printf("Displaying message %v", msg)
 	img := image.NewGray(image.Rect(0, 0, DefaultOpts.W, DefaultOpts.H))
-	
+
 	f2 := basicfont.Face7x13
 	drawer := font.Drawer{
 		Dst:  img,
@@ -122,53 +125,156 @@ func (screen *Screen) DisplayMessage(messages []Msg) {
 	}
 
 	for _, msg := range messages {
-		drawer.Dot.X = fixed.Int26_6(msg.x<<6)
-		drawer.Dot.Y = fixed.Int26_6(msg.y<<6)
+		drawer.Dot.X = fixed.Int26_6(msg.x << 6)
+		drawer.Dot.Y = fixed.Int26_6(msg.y << 6)
 		drawer.DrawString(msg.msg)
+		if msg.invert {
+			for x := 0; x < DefaultOpts.W; x++ {
+				for y := msg.y+1; y > msg.y-14; y-- {
+					if img.GrayAt(x, y).Y == 255 {
+						img.Set(x, y, color.Black)
+					}else {
+						img.Set(x, y, color.White)
+					}
+				}
+			}
+		}
 	}
-		
-	if err := screen.dev.Draw(img.Bounds(), img, image.Point{}); err != nil {
-		log.Fatal(err)
+	screen.dev.Draw(img.Bounds(), img, image.Point{})
+}
+
+func (screen *Screen) DisplayLoadingMessage(messages []Msg, direction bool) {
+	// Draw on it.
+	// log.Printf("Displaying message %v", msg)
+	img := image.NewGray(image.Rect(0, 0, DefaultOpts.W, DefaultOpts.H))
+
+	f2 := basicfont.Face7x13
+	drawer := font.Drawer{
+		Dst:  img,
+		Src:  &image.Uniform{image1bit.On},
+		Face: f2,
+		Dot:  fixed.P(0, img.Bounds().Dy()-1-f2.Descent),
+	}
+
+	for _, msg := range messages {
+		drawer.Dot.X = fixed.Int26_6(msg.x << 6)
+		drawer.Dot.Y = fixed.Int26_6(msg.y << 6)
+		drawer.DrawString(msg.msg)
+		if msg.msg != "" {
+			for x := 0; x < DefaultOpts.W; x++ {
+				for y := msg.y+1; y > msg.y-14; y-- {
+					if img.GrayAt(x, y).Y == 255 {
+						img.Set(x, y, color.Black)
+					}else {
+						img.Set(x, y, color.White)
+					}
+				}
+				screen.dev.Draw(img.Bounds(), img, image.Point{})
+				time.Sleep(time.Millisecond*5)
+			}
+		}
 	}
 }
-    
-func (screen *Screen) DisplayGif(gif_path string, quit chan bool){
-    // Decodes an animated GIF as specified on the command line:
-    f, err := os.Open(gif_path)
-    if err != nil {
-        log.Fatal(err)
-    }
+
+func (screen *Screen) DisplayBarYMessage(messages []Msg, percent int) {
+	// Draw on it.
+	// log.Printf("Displaying message %v", msg)
+	img := image.NewGray(image.Rect(0, 0, DefaultOpts.W, DefaultOpts.H))
+
+	f2 := basicfont.Face7x13
+	drawer := font.Drawer{
+		Dst:  img,
+		Src:  &image.Uniform{image1bit.On},
+		Face: f2,
+		Dot:  fixed.P(0, img.Bounds().Dy()-1-f2.Descent),
+	}
+
+	for _, msg := range messages {
+		drawer.Dot.X = fixed.Int26_6(msg.x << 6)
+		drawer.Dot.Y = fixed.Int26_6(msg.y << 6)
+		drawer.DrawString(msg.msg)
+		for y := 64; y > DefaultOpts.H-percent; y-- {
+			for x := 0; x < DefaultOpts.W; x++ {
+				if img.GrayAt(x, y).Y == 255 {
+					img.Set(x, y, color.Black)
+				}else {
+					img.Set(x, y, color.White)
+				}
+			}
+		}
+	}
+	screen.dev.Draw(img.Bounds(), img, image.Point{})
+}
+
+func (screen *Screen) DisplayBarXMessage(messages []Msg, percent int) {
+	// Draw on it.
+	// log.Printf("Displaying message %v", msg)
+	img := image.NewGray(image.Rect(0, 0, DefaultOpts.W, DefaultOpts.H))
+
+	f2 := basicfont.Face7x13
+	drawer := font.Drawer{
+		Dst:  img,
+		Src:  &image.Uniform{image1bit.On},
+		Face: f2,
+		Dot:  fixed.P(0, img.Bounds().Dy()-1-f2.Descent),
+	}
+
+	for _, msg := range messages {
+		drawer.Dot.X = fixed.Int26_6(msg.x << 6)
+		drawer.Dot.Y = fixed.Int26_6(msg.y << 6)
+		drawer.DrawString(msg.msg)
+		if msg.msg != "" {
+			for x := 0; x < DefaultOpts.W-int(math.Abs(float64(percent-DefaultOpts.W))); x++ {
+				for y := msg.y+1; y > msg.y-14; y-- {
+					if img.GrayAt(x, y).Y == 255 {
+						img.Set(x, y, color.Black)
+					}else {
+						img.Set(x, y, color.White)
+					}
+				}
+			}
+		}
+	}
+	screen.dev.Draw(img.Bounds(), img, image.Point{})
+}
+
+func (screen *Screen) DisplayGif(gif_path string, quit chan bool) {
+	// Decodes an animated GIF as specified on the command line:
+	f, err := os.Open(gif_path)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Printf("Decoding image %v", gif_path)
 
-    g, err := gif.DecodeAll(f)
-    f.Close()
-    if err != nil {
-        log.Fatal(err)
-    }
+	g, err := gif.DecodeAll(f)
+	f.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Printf("Converting image %v", gif_path)
-    // Converts every frame to image.Gray and resize them:
-    imgs := make([]*image.Gray, len(g.Image))
-    for i := range g.Image {
-        imgs[i] = convertAndResizeAndCenter(DefaultOpts.W, DefaultOpts.H, g.Image[i])
-    }
+	// Converts every frame to image.Gray and resize them:
+	imgs := make([]*image.Gray, len(g.Image))
+	for i := range g.Image {
+		imgs[i] = convertAndResizeAndCenter(DefaultOpts.W, DefaultOpts.H, g.Image[i])
+	}
 
 	log.Printf("Displaying image %v", gif_path)
-    // Display the frames in a loop:
-    for i := 0; ; i++ {
-        select {
-        case <-quit:
+	// Display the frames in a loop:
+	for i := 0; ; i++ {
+		select {
+		case <-quit:
 			os.Clearenv()
-            return
-        default:
-            index := i % len(imgs)
-            c := time.After(time.Duration(10*g.Delay[index]) * time.Millisecond)
-            img := imgs[index]
-            screen.dev.Draw(img.Bounds(), img, image.Point{})
-            <-c
-        }
-    }
+			return
+		default:
+			index := i % len(imgs)
+			c := time.After(time.Duration(10*g.Delay[index]) * time.Millisecond)
+			img := imgs[index]
+			screen.dev.Draw(img.Bounds(), img, image.Point{})
+			<-c
+		}
+	}
 }
 
 // newI2CAddress returns a Dev object that communicates over I²C to a SSD1306 display
@@ -177,7 +283,6 @@ func newI2CAddress(i i2c.Bus, opts *Opts, address uint16) (*Dev, error) {
 	// Maximum clock speed is 1/2.5µs = 400KHz.
 	return newDev(&i2c.Dev{Bus: i, Addr: address}, opts, false, nil)
 }
-
 
 // Package ssd1306 \\
 const (

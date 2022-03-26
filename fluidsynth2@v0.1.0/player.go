@@ -10,6 +10,14 @@ type Player struct {
 	ptr *C.fluid_player_t
 }
 
+type fluidPlayerSetTempoType int
+ 
+const (
+    FLUID_PLAYER_TEMPO_INTERNAL fluidPlayerSetTempoType = iota
+    FLUID_PLAYER_TEMPO_EXTERNAL_BPM
+    FLUID_PLAYER_TEMPO_EXTERNAL_MIDI
+)
+
 func NewPlayer(synth Synth) Player {
 	return Player{C.new_fluid_player(synth.ptr)}
 }
@@ -62,7 +70,9 @@ func (p *Player) GetBPM() int {
 
 //SetBPM sets the beats per minute of the MIDI player
 func (p *Player) SetBPM(bpm int) {
-	C.fluid_player_set_bpm(p.ptr, C.int(bpm))
+	C.fluid_player_set_tempo(p.ptr,
+							 C.int(FLUID_PLAYER_TEMPO_EXTERNAL_BPM),
+		                     C.double(bpm))
 }
 
 //GetTempo returns the tempo of the MIDI player (in microseconds per quarter note)
@@ -72,7 +82,9 @@ func (p *Player) GetTempo() int {
 
 //SetTempo sets the tempo of the MIDI player (in microseconds per quarter note)
 func (p *Player) SetTempo(bpm int) {
-	C.fluid_player_set_midi_tempo(p.ptr, C.int(bpm))
+		C.fluid_player_set_tempo(p.ptr,
+		C.int(FLUID_PLAYER_TEMPO_EXTERNAL_BPM),
+		C.double(bpm))
 }
 
 //GetCurrentTick returns the number of tempo ticks passed

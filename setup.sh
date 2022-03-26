@@ -51,10 +51,12 @@ setup_serial() {
 install_all_deps() {
   sudo apt-get update
   sudo apt-get upgrade -y
-  sudo apt-get install -y pulseaudio libpulse-dev osspd alsa-utils alsa-oss alsa-tools jack jack-tools a2jmidid libjack-dev libinstpatch-1.0 libglib2.0-dev
+  sudo apt-get install -y pulseaudio libpulse-dev libportmidi-dev osspd alsa-utils alsa-oss alsa-tools jack jackd2 jack-tools a2jmidid libjack-jackd2-dev libinstpatch-1.0 libglib2.0-dev
   sudo apt install libasound2-dev
   sudo apt install git check libglib2.0-dev libreadline-dev libudev-dev libsystemd-dev libusb-dev cmake build-essential libsndfile-dev swami
   sudo apt-get autoremove -y
+
+  sudo gpasswd -a $USER audio
 }
 
 setup_service() {
@@ -67,21 +69,30 @@ setup_service() {
 }
 
 build_fluidsynth() {
-    curl https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v2.2.3.tar.gz
-    tar -xvf fluidsynth-2.2.3.tar.gz
-    cd fluidsynth-2.2.3
+    sudo apt-get install -y python-pip
+    pip install lastversion
+    FLUIDSYNTH_VERSION=$(lastversion https://github.com/FluidSynth/fluidsynth)
+    wget https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v${FLUIDSYNTH_VERSION}.tar.gz
+    tar -xvf v${FLUIDSYNTH_VERSION}.tar.gz
+    cd fluidsynth-${FLUIDSYNTH_VERSION}
     mkdir build
     cd build
     cmake ..
     make
-    make install
-    mmake check
+    sudo make install
+    make check
+    
+    cd ../../
+    rm -rf fluidsynth-${FLUIDSYNTH_VERSION}
+    rm -rf v2.2.6.tar.gz
 }
 
-install_all_deps
-setup_i2c
-setup_audio
-setup_serial
+# install_all_deps
+# setup_i2c
+# setup_audio
+# setup_serial
+
+build_fluidsynth
 
 # setup_service
 

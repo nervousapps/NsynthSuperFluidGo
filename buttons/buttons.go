@@ -26,7 +26,7 @@ func NewButton(gpioPin string, handler func(chan bool)) (*Button, error) {
     }
 
     // Set it as input, with an internal pull up resistor: gpio.BothEdges
-    if err := p.In(gpio.PullUp, gpio.FallingEdge); err != nil {
+    if err := p.In(gpio.PullUp, gpio.BothEdges); err != nil {
         log.Println(err)
     }
 
@@ -42,6 +42,6 @@ func NewButton(gpioPin string, handler func(chan bool)) (*Button, error) {
 		}else {
             buttonChannel <- false
 		}
-        time.Sleep(50*time.Millisecond)
+        time.Sleep(100*time.Millisecond)
     }
 }

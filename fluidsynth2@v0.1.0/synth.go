@@ -8,7 +8,6 @@ import (
 	"unsafe"
 )
 
-
 type Synth struct {
 	ptr *C.fluid_synth_t
 }
@@ -21,12 +20,25 @@ func (s *Synth) Close() {
 	C.delete_fluid_synth(s.ptr)
 }
 
+func (s *Synth) SetGain(gain float64) {
+	C.fluid_synth_set_gain(s.ptr, C.float(gain))
+}
+
+func (s *Synth) SetPoly(polyphony int) {
+	C.fluid_synth_set_polyphony(s.ptr, C.int(polyphony))
+}
+
 func (s *Synth) SFLoad(path string, resetPresets bool) int {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	creset := cbool(resetPresets)
 	cfont_id, _ := C.fluid_synth_sfload(s.ptr, cpath, creset)
+	// s.SetBankOffset(int(cfont_id))
 	return int(cfont_id)
+}
+
+func (s *Synth) SetBankOffset(sf_id int) {
+	C.fluid_synth_set_bank_offset(s.ptr, C.int(sf_id), 4)
 }
 
 type Preset struct {
@@ -41,22 +53,51 @@ func (s *Synth) SFGetPresetName(channel int) string {
 	preset := Preset{C.fluid_synth_get_channel_preset(s.ptr, C.int(channel))}
 	preset_name := C.fluid_preset_get_name(preset.ptr)
 	presetString := C.GoString(preset_name)
-	// C.free(unsafe.Pointer(preset_name))
 	return presetString
 }
 
-func (s *Synth) SFGetPresetsName(sf_id int) []string {
-	presets_name := make([]string, 200)
+type PresetName struct {
+	Bank int
+	Num int
+	MenuObject
+}
+
+func GetPresetsName(presets []PresetName) []string {
+	var presets_name []string
+	for _, preset := range(presets) {
+		presets_name = append(presets_name, preset.Name)
+	}
+	return presets_name
+} 
+
+func (s *Synth) SFGetPresetsName(sf_id int) []PresetName {
+	var presets_name []PresetName
 	soundfont := Soundfont{C.fluid_synth_get_sfont_by_id(s.ptr, C.int(sf_id))}
 	C.fluid_sfont_iteration_start(soundfont.ptr)
 	preset := Preset{C.fluid_sfont_iteration_next(soundfont.ptr)}
 	for preset.ptr != nil {
 		preset_name := C.fluid_preset_get_name(preset.ptr)
-		presetString := C.GoString(preset_name)
-		presets_name = append(presets_name, presetString)
+		presetName := PresetName{preset.PresetGetBanknum(), preset.PresetGetNum(), MenuObject{C.GoString(preset_name)}}
+		presets_name = append(presets_name, presetName)
 		preset = Preset{C.fluid_sfont_iteration_next(soundfont.ptr)}
 	}
 	return presets_name
+}
+
+func (s *Synth) CountEffectsChannels() int {
+	return int(C.fluid_synth_count_effects_channels(s.ptr))
+}
+
+func (s *Synth) CountEffectsGroups() int {
+	return int(C.fluid_synth_count_effects_groups(s.ptr))
+}
+
+func (p *Preset) PresetGetBanknum() int {
+	return int(C.fluid_preset_get_banknum(p.ptr))
+}
+
+func (p *Preset) PresetGetNum() int {
+	return int(C.fluid_preset_get_num(p.ptr))
 }
 
 func (s *Synth) NoteOn(channel, note, velocity uint8) {
@@ -69,6 +110,15 @@ func (s *Synth) NoteOff(channel, note uint8) {
 
 func (s *Synth) ProgramChange(channel, program uint8) {
 	C.fluid_synth_program_change(s.ptr, C.int(channel), C.int(program))
+}
+
+func (s *Synth) ProgramSelect(channel, sfontId int, bankNum int, presetNum int) string{
+	C.fluid_synth_program_select(s.ptr,
+								 C.int(channel),
+								 C.int(sfontId),
+								 C.int(bankNum),
+								 C.int(presetNum))
+	return s.SFGetPresetName(0)
 }
 
 /* EFFECTS */
@@ -86,6 +136,10 @@ func (s *Synth) SetReverbLevel(fx_group int, level float64){
 
 func (s *Synth) SetReverbWidth(fx_group int, width float64){
 	C.fluid_synth_set_reverb_group_width(s.ptr, C.int(fx_group), C.double(width))
+}
+
+func (s *Synth) SetReverbDamp(fx_group int, damping float64){
+	C.fluid_synth_set_reverb_group_damp(s.ptr, C.int(fx_group), C.double(damping))
 }
 
 /* WriteS16 synthesizes signed 16-bit samples. It will fill as much of the provided
